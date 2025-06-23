@@ -1,9 +1,6 @@
 version: "3.9"
 
 services:
-  # ---------------------------------------------------------------------------
-  # MySQL
-  # ---------------------------------------------------------------------------
   mysql:
     image: mysql:8.0
     container_name: mysql-container
@@ -18,15 +15,7 @@ services:
     volumes:
       - mysql-data:/var/lib/mysql
       - ./sql:/docker-entrypoint-initdb.d
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "--password=mazdour"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
-  # ---------------------------------------------------------------------------
-  # Adminer (facultatif, pour inspecter la BDD)
-  # ---------------------------------------------------------------------------
   adminer:
     image: adminer
     container_name: adminer-container
@@ -34,9 +23,6 @@ services:
     ports:
       - "8080:8080"
 
-  # ---------------------------------------------------------------------------
-  # Backend FastAPI
-  # ---------------------------------------------------------------------------
   backend:
     build:
       context: ./Backend
@@ -46,22 +32,13 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      mysql:
-        condition: service_healthy
+      - mysql
     environment:
       DB_HOST: mysql
       DB_USER: adam
       DB_PASSWORD: adam
       DB_NAME: usersdb
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
-  # ---------------------------------------------------------------------------
-  # Frontend React (servi en mode dev ou build selon ton Dockerfile)
-  # ---------------------------------------------------------------------------
   frontend:
     build:
       context: ./frontend
@@ -73,26 +50,16 @@ services:
     ports:
       - "3000:3000"
     depends_on:
-      backend:
-        condition: service_healthy
+      - backend
     environment:
       - CHOKIDAR_USEPOLLING=true
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
-  # ---------------------------------------------------------------------------
-  # Service de tests backend
-  # ---------------------------------------------------------------------------
   tests:
     build:
       context: ./Backend
       dockerfile: Dockerfile.test
     depends_on:
-      mysql:
-        condition: service_healthy
+      - mysql
     environment:
       DB_HOST: mysql
       DB_USER: adam
