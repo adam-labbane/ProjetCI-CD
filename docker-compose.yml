@@ -21,7 +21,7 @@ services:
       - "8080:8080"
   backend:
     build:
-      context: ./backend
+      context: ./Backend
       dockerfile: Dockerfile
     container_name: backend-container
     restart: always
@@ -36,7 +36,7 @@ services:
       DB_NAME: usersdb
   tests:
     build:
-      context: ./backend
+      context: ./Backend
       dockerfile: Dockerfile.test
     depends_on:
       - mysql
