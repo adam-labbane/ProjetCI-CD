@@ -1,51 +1,135 @@
-name: 🚀 Fullstack – Build, Test (Cypress) & Deploy
+name: Fullstack CI/CD Pipeline
 
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
-permissions:
-  contents: write
-  pages: write
-  id-token: write
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+  REACT_APP_SERVER_URL: http://backend:8000
 
 jobs:
-  compose-e2e:
+  test_backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./Backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+
+      - name: Run Backend Tests
+        run: pytest --cov=. --cov-report=term
+
+  build_and_test_fullstack:
+    needs: test_backend
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Set up Docker Compose
-        run: docker compose version
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
 
-      - name: Build and launch stack
-        run: docker compose -f docker-compose.yml up -d --build
+      - name: Install frontend deps
+        working-directory: ./frontend
+        run: npm ci
 
-      - name: Wait for frontend (React) to be ready
-        run: |
-          echo "⏳ Attente du frontend sur http://localhost:3000"
-          npx wait-on http://localhost:3000 --timeout 60000
+      - name: Build Docker stack
+        run: docker compose up -d --build
+
+      - name: Wait for services
+        run: sleep 10
 
       - name: Run Cypress tests
-        run: docker compose run --rm cypress
+        uses: cypress-io/github-action@v6
+        with:
+          working-directory: ./frontend
+          wait-on: http://localhost:3000
+          wait-on-timeout: 60
 
-      - name: Stop containers
+      - name: Stop Docker stack
         run: docker compose down
 
-      # # Facultatif : publier la build React (build déjà faite dans Dockerfile frontend)
-      # - name: Copy React build to local folder
-      #   run: |
-      #     mkdir -p react-build
-      #     docker cp $(docker ps -qf "name=frontend"):/app/build ./react-build
+      - name: Upload coverage reports (optional)
+        uses: codecov/codecov-action@v3
+        with:
+          directory: ./frontend
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
-      - name: Upload React build to GitHub Pages
+  deploy_frontend:
+    needs: build_and_test_fullstack
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install deps and build React app
+        working-directory: ./frontend
+        run: |
+          npm ci
+          npm run build
+        env:
+          REACT_APP_SERVER_URL: ${{ env.REACT_APP_SERVER_URL }}
+
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./react-build
+          path: ./frontend/build
 
+  deploy_pages:
+    needs: deploy_frontend
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
       - name: Deploy to GitHub Pages
+        id: deployment
         uses: actions/deploy-pages@v4
+
+  deploy_backend_vercel:
+    needs: test_backend
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Vercel CLI
+        run: npm install --global vercel@latest
+
+      - name: Pull Vercel Environment Information
+        run: vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: ./Backend
+
+      - name: Build Project Artifacts
+        run: vercel build --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: ./Backend
+
+      - name: Deploy to prod
+        run: vercel --prod --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: ./Backend
