@@ -1,4 +1,9 @@
+version: "3.9"
+
 services:
+  # ---------------------------------------------------------------------------
+  # MySQL
+  # ---------------------------------------------------------------------------
   mysql:
     image: mysql:8.0
     container_name: mysql-container
@@ -13,12 +18,25 @@ services:
     volumes:
       - mysql-data:/var/lib/mysql
       - ./sql:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "--password=mazdour"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Adminer (facultatif, pour inspecter la BDD)
+  # ---------------------------------------------------------------------------
   adminer:
     image: adminer
     container_name: adminer-container
     restart: always
     ports:
       - "8080:8080"
+
+  # ---------------------------------------------------------------------------
+  # Backend FastAPI
+  # ---------------------------------------------------------------------------
   backend:
     build:
       context: ./Backend
@@ -28,46 +46,59 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - mysql
+      mysql:
+        condition: service_healthy
     environment:
       DB_HOST: mysql
       DB_USER: adam
       DB_PASSWORD: adam
       DB_NAME: usersdb
-  tests:
-    build:
-      context: ./Backend
-      dockerfile: Dockerfile.test
-    depends_on:
-      - mysql
-    environment:
-      DB_HOST: mysql
-      DB_USER: adam
-      DB_PASSWORD: adam
-      DB_NAME: usersdb
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------------------
+  # Frontend React (servi en mode dev ou build selon ton Dockerfile)
+  # ---------------------------------------------------------------------------
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
       args:
         REACT_APP_SERVER_URL: http://backend:8000
+    container_name: frontend-container
+    restart: always
     ports:
       - "3000:3000"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     environment:
       - CHOKIDAR_USEPOLLING=true
-  cypress:
-    image: cypress/included:14.4.1
-    depends_on:
-      - frontend
-    environment:
-      CYPRESS_baseUrl: http://frontend:3000
-    working_dir: /e2e
-    volumes:
-      - ./frontend/cypress:/e2e    
-    entrypoint: ["cypress", "run"] 
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # ---------------------------------------------------------------------------
+  # Service de tests backend
+  # ---------------------------------------------------------------------------
+  tests:
+    build:
+      context: ./Backend
+      dockerfile: Dockerfile.test
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql
+      DB_USER: adam
+      DB_PASSWORD: adam
+      DB_NAME: usersdb
+    profiles: ["test"]
 
 volumes:
   mysql-data:
