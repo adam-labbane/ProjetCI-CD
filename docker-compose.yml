@@ -44,7 +44,7 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        REACT_APP_SERVER_URL: http://backend:8000
+        REACT_APP_SERVER_URL: http://localhost:8000
     container_name: frontend-container
     restart: always
     ports:

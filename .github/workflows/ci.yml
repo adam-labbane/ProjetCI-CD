@@ -120,7 +120,7 @@ jobs:
           npm ci
           npm run build
         env:
-          REACT_APP_SERVER_URL: ${{ env.REACT_APP_SERVER_URL }}
+          REACT_APP_SERVER_URL: http://localhost:8000
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
