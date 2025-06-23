@@ -47,14 +47,16 @@ services:
       DB_NAME: usersdb
   frontend:
     build:
-      context: ./frontend
-      dockerfile: Dockerfile
+    context: ./frontend
+    dockerfile: Dockerfile
+    args:
+      REACT_APP_SERVER_URL: http://backend:8000
     ports:
-      - "3000:3000"
-    environment:
-      - CHOKIDAR_USEPOLLING=true
+    - "3000:3000"
     depends_on:
-      - backend
+    - backend
+    environment:
+    - CHOKIDAR_USEPOLLING=true
 
   cypress:
     image: cypress/included:14.4.1
