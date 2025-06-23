@@ -1,0 +1,51 @@
+name: 🚀 Fullstack – Build, Test (Cypress) & Deploy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+jobs:
+  compose-e2e:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Compose
+        run: docker compose version
+
+      - name: Build and launch stack
+        run: docker compose -f docker-compose.yml up -d --build
+
+      - name: Wait for frontend (React) to be ready
+        run: |
+          echo "⏳ Attente du frontend sur http://localhost:3000"
+          npx wait-on http://localhost:3000 --timeout 60000
+
+      - name: Run Cypress tests
+        run: docker compose run --rm cypress
+
+      - name: Stop containers
+        run: docker compose down
+
+      # # Facultatif : publier la build React (build déjà faite dans Dockerfile frontend)
+      # - name: Copy React build to local folder
+      #   run: |
+      #     mkdir -p react-build
+      #     docker cp $(docker ps -qf "name=frontend"):/app/build ./react-build
+
+      - name: Upload React build to GitHub Pages
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./react-build
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
