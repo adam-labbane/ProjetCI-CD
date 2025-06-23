@@ -55,9 +55,6 @@ services:
       - CHOKIDAR_USEPOLLING=true
     depends_on:
       - backend
-    volumes:
-      - ./frontend:/app
-      - /app/node_modules
 
   cypress:
     image: cypress/included:14.4.1
