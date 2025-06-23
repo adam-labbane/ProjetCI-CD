@@ -57,7 +57,6 @@ services:
       - backend
     environment:
       - CHOKIDAR_USEPOLLING=true
-
   cypress:
     image: cypress/included:14.4.1
     depends_on:

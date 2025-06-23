@@ -8,10 +8,13 @@ on:
   workflow_dispatch:
 
 env:
-  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-  REACT_APP_SERVER_URL: http://backend:8000
+  VERCEL_ORG_ID:      ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID:  ${{ secrets.VERCEL_PROJECT_ID }}
+  REACT_APP_SERVER_URL: http://backend:8000 
 
+###############################################################################
+# 1. TESTS BACK-END
+###############################################################################
 jobs:
   test_backend:
     runs-on: ubuntu-latest
@@ -36,13 +39,15 @@ jobs:
       - name: Run Backend Tests
         run: pytest --cov=. --cov-report=term
 
+###############################################################################
+# 2. BUILD STACK + TESTS End-to-End
+###############################################################################
   build_and_test_fullstack:
     needs: test_backend
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -53,29 +58,55 @@ jobs:
         working-directory: ./frontend
         run: npm ci
 
-      - name: Build Docker stack
+      # ────────────────────────────────────────────────────────────────────────
+      # Démarrage de la stack (sans le service cypress)
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Build & start Docker stack
         run: docker compose up -d --build
 
-      - name: Wait for services
-        run: sleep 10
+      # Optionnel : afficher la liste des conteneurs pour debug
+      - name: Docker services
+        run: docker compose ps
 
-      - name: Run Cypress tests
+      # ────────────────────────────────────────────────────────────────────────
+      # Cypress via l’action officielle
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Cypress e2e tests
         uses: cypress-io/github-action@v6
         with:
           working-directory: ./frontend
           wait-on: http://localhost:3000
-          wait-on-timeout: 60
+          wait-on-timeout: 180
+        env:
+          CYPRESS_BASE_URL: http://localhost:3000
 
+      # ────────────────────────────────────────────────────────────────────────
+      # Dump des logs si échec
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Dump Docker logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+
+      # ────────────────────────────────────────────────────────────────────────
+      # Arrêt de la stack dans tous les cas
+      # ────────────────────────────────────────────────────────────────────────
       - name: Stop Docker stack
+        if: always()
         run: docker compose down
 
-      - name: Upload coverage reports (optional)
+      # ────────────────────────────────────────────────────────────────────────
+      # Upload couverture front
+      # ────────────────────────────────────────────────────────────────────────
+      - name: Upload coverage reports
         uses: codecov/codecov-action@v3
         with:
           directory: ./frontend
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
 
+###############################################################################
+# 3. BUILD & PUBLISH FRONTEND (GitHub Pages)
+###############################################################################
   deploy_frontend:
     needs: build_and_test_fullstack
     runs-on: ubuntu-latest
@@ -83,7 +114,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install deps and build React app
+      - name: Install deps & build React app
         working-directory: ./frontend
         run: |
           npm ci
@@ -96,6 +127,9 @@ jobs:
         with:
           path: ./frontend/build
 
+###############################################################################
+# 4. DEPLOY GitHub Pages
+###############################################################################
   deploy_pages:
     needs: deploy_frontend
     runs-on: ubuntu-latest
@@ -112,6 +146,9 @@ jobs:
         id: deployment
         uses: actions/deploy-pages@v4
 
+###############################################################################
+# 5. DEPLOY BACK-END (Vercel)
+###############################################################################
   deploy_backend_vercel:
     needs: test_backend
     runs-on: ubuntu-latest
@@ -122,14 +159,14 @@ jobs:
       - name: Install Vercel CLI
         run: npm install --global vercel@latest
 
-      - name: Pull Vercel Environment Information
+      - name: Pull Vercel environment info
+        working-directory: ./Backend
         run: vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
-        working-directory: ./Backend
 
-      - name: Build Project Artifacts
+      - name: Build project
+        working-directory: ./Backend
         run: vercel build --token=${{ secrets.VERCEL_TOKEN }}
-        working-directory: ./Backend
 
-      - name: Deploy to prod
-        run: vercel --prod --token=${{ secrets.VERCEL_TOKEN }}
+      - name: Deploy to production
         working-directory: ./Backend
+        run: vercel --prod --token=${{ secrets.VERCEL_TOKEN }}
