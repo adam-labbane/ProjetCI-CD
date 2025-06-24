@@ -36,10 +36,20 @@ const UserForm = ({ onCreated }) => {
           <input
             key={key}
             name={key}
-            placeholder={key}
+            type={
+              key === "birthdate"
+                ? "date"
+                : key === "email"
+                  ? "email"
+                  : key === "password"
+                    ? "password"
+                    : "text"
+            }
+            placeholder={`Entrer ${key}`}
             value={form[key]}
             onChange={handleChange}
           />
+
         ) : (
           <label key={key}>
             <input
