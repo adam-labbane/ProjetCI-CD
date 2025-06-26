@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import BLOG_API from "../services/blog";
+import BLOG_API from "../services/blogApi";
 
 const BlogForm = ({ onCreated }) => {
   const [form, setForm] = useState({

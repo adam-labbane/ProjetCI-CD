@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import BLOG_API from "../services/blog";
+import BLOG_API from "../services/blogApi";
 import BlogForm from "./BlogForm";
 
 const BlogPosts = () => {
