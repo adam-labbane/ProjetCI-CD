@@ -11,6 +11,7 @@ env:
   VERCEL_ORG_ID:      ${{ secrets.VERCEL_ORG_ID }}
   VERCEL_PROJECT_ID:  ${{ secrets.VERCEL_PROJECT_ID }}
   REACT_APP_SERVER_URL: https://projet-ci-cd.vercel.app/
+  REACT_APP_BLOG_API_URL: https://blog-api-nine-vert.vercel.app/
 
 ###############################################################################
 # 1. TESTS BACK-END
