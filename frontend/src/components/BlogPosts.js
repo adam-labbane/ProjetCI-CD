@@ -1,39 +1,33 @@
 import React, { useEffect, useState } from "react";
-import blogAPI from "../services/blogApi";
+import BLOG_API from "../services/blog";
+import BlogForm from "./BlogForm";
 
 const BlogPosts = () => {
   const [posts, setPosts] = useState([]);
-  const [error, setError] = useState("");
+
+  const loadPosts = () => {
+    BLOG_API.get("/posts")
+      .then((res) => setPosts(res.data))
+      .catch((err) => console.error(err));
+  };
 
   useEffect(() => {
-    blogAPI.get("/posts")
-      .then((res) => {
-        setPosts(res.data);
-      })
-      .catch((err) => {
-        setError("Erreur lors du chargement des billets");
-        console.error(err);
-      });
+    loadPosts();
   }, []);
-
-  if (error) return <p style={{ color: "red" }}>{error}</p>;
 
   return (
     <div>
-      <h2>Billets de blog</h2>
-      {posts.length === 0 ? (
-        <p>Aucun billet pour le moment.</p>
-      ) : (
-        <ul>
-          {posts.map((post) => (
-            <li key={post._id}>
-              <h3>{post.title}</h3>
-              <p>{post.content}</p>
-              <small>Publié le : {new Date(post.createdAt).toLocaleDateString()}</small>
-            </li>
-          ))}
-        </ul>
-      )}
+      <h1>Blog</h1>
+      <BlogForm onCreated={loadPosts} />
+      <ul>
+        {posts.map((post) => (
+          <li key={post._id}>
+            <h3>{post.title}</h3>
+            <p>{post.content}</p>
+            <small>{new Date(post.createdAt).toLocaleString()}</small>
+          </li>
+        ))}
+      </ul>
     </div>
   );
 };
