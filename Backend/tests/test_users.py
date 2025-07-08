@@ -1,21 +1,30 @@
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from fastapi.testclient import TestClient
-from main import app, get_connection  
+
+import pytest
+from main import get_connection
 
 
-client = TestClient(app)
-
-def test_get_users_returns_list():
-    response = client.get("/users")
+# ───────────────────────────────────────────────────────────────
+# GET /users
+# ───────────────────────────────────────────────────────────────
+def test_get_users_returns_list(test_client):
+    response = test_client.get("/users")
     assert response.status_code == 200
     assert isinstance(response.json(), list)
 
-def test_create_user():
+
+# ───────────────────────────────────────────────────────────────
+# POST /users
+# ───────────────────────────────────────────────────────────────
+def test_create_user(test_client):
+    email = "john.doe@example.com"
+
+    # Nettoyage préalable
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM users WHERE email = 'john.doe@example.com'")
+    cursor.execute("DELETE FROM users WHERE email = %s", (email,))
     conn.commit()
     cursor.close()
     conn.close()
@@ -23,7 +32,7 @@ def test_create_user():
     payload = {
         "firstname": "John",
         "lastname": "Doe",
-        "email": "john.doe@example.com",
+        "email": email,
         "birthdate": "1990-01-01",
         "city": "Paris",
         "zipcode": "75001",
@@ -31,22 +40,29 @@ def test_create_user():
         "is_admin": False
     }
 
-    response = client.post("/users", json=payload)
+    response = test_client.post("/users", json=payload)
     assert response.status_code == 200
     assert response.json() == {"message": "Utilisateur créé avec succès"}
 
-def test_create_user_and_fetch_it():
+
+# ───────────────────────────────────────────────────────────────
+# POST + GET vérification création
+# ───────────────────────────────────────────────────────────────
+def test_create_user_and_fetch_it(test_client):
+    email = "testuser@example.com"
+
+    # Suppression préalable
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("DELETE FROM users WHERE email = 'testuser@example.com'")
+    cursor.execute("DELETE FROM users WHERE email = %s", (email,))
     conn.commit()
     cursor.close()
     conn.close()
 
-    test_user = {
+    payload = {
         "firstname": "Test",
         "lastname": "User",
-        "email": "testuser@example.com",
+        "email": email,
         "birthdate": "1990-01-01",
         "city": "Paris",
         "zipcode": "75000",
@@ -54,21 +70,32 @@ def test_create_user_and_fetch_it():
         "is_admin": False
     }
 
-    post_response = client.post("/users", json=test_user)
+    post_response = test_client.post("/users", json=payload)
     assert post_response.status_code == 200
-    assert post_response.json() == {"message": "Utilisateur créé avec succès"}
 
-    get_response = client.get("/users")
+    get_response = test_client.get("/users")
     assert get_response.status_code == 200
     users = get_response.json()
-    assert any(u["email"] == "testuser@example.com" for u in users)
+    assert any(u["email"] == email for u in users)
 
 
+# ───────────────────────────────────────────────────────────────
+# POST /users - Conflit si email déjà utilisé
+# ───────────────────────────────────────────────────────────────
 def test_create_user_conflict_on_duplicate_email(test_client):
+    email = "duplicate@example.com"
+
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM users WHERE email = %s", (email,))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
     user_data = {
         "firstname": "Jean",
         "lastname": "Dupont",
-        "email": "duplicate@example.com",
+        "email": email,
         "birthdate": "1992-04-12",
         "city": "Lyon",
         "zipcode": "69000",
@@ -76,20 +103,30 @@ def test_create_user_conflict_on_duplicate_email(test_client):
         "is_admin": False
     }
 
-    # Première insertion
     response1 = test_client.post("/users", json=user_data)
     assert response1.status_code == 200
 
-    # Deuxième insertion avec le même email
     response2 = test_client.post("/users", json=user_data)
     assert response2.status_code == 409
     assert response2.json()["detail"] == "Email déjà utilisé"
 
+
+# ───────────────────────────────────────────────────────────────
+# DELETE /users/{id} par un admin
+# ───────────────────────────────────────────────────────────────
 def test_admin_can_delete_user(test_client):
     admin_email = "admin@example.com"
     user_email = "victim@example.com"
 
-    # Créer un admin
+    # Clean emails
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM users WHERE email IN (%s, %s)", (admin_email, user_email))
+    conn.commit()
+    cursor.close()
+    conn.close()
+
+    # Création admin
     test_client.post("/users", json={
         "firstname": "Admin",
         "lastname": "One",
@@ -101,7 +138,7 @@ def test_admin_can_delete_user(test_client):
         "is_admin": True
     })
 
-    # Créer un utilisateur normal
+    # Création user
     test_client.post("/users", json={
         "firstname": "User",
         "lastname": "Victim",
@@ -113,17 +150,28 @@ def test_admin_can_delete_user(test_client):
         "is_admin": False
     })
 
-    # Récupérer ID du user à supprimer
+    # Récupération ID
     users = test_client.get("/users").json()
     user_id = next(u["id"] for u in users if u["email"] == user_email)
 
-    # Suppression
     delete_response = test_client.delete(f"/users/{user_id}?admin_email={admin_email}")
     assert delete_response.status_code == 200
     assert "supprimé" in delete_response.json()["message"]
 
+
+# ───────────────────────────────────────────────────────────────
+# DELETE échoue avec un non-admin
+# ───────────────────────────────────────────────────────────────
 def test_non_admin_cannot_delete_user(test_client):
     non_admin_email = "nonadmin@example.com"
+
+    # Clean
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM users WHERE email = %s", (non_admin_email,))
+    conn.commit()
+    cursor.close()
+    conn.close()
 
     test_client.post("/users", json={
         "firstname": "Non",
@@ -136,6 +184,5 @@ def test_non_admin_cannot_delete_user(test_client):
         "is_admin": False
     })
 
-    # Suppression d’un ID inexistant avec email non-admin
     response = test_client.delete("/users/999999?admin_email=nonadmin@example.com")
     assert response.status_code == 403
